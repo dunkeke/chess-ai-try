@@ -121,3 +121,31 @@ In terms of Heritage, Sunfish borrows much more from [Micro-Max by Geert Muller]
 # License
 
 [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.en.html)
+
+## Streamlit 前端部署（新增）
+
+已新增 `app.py`，可直接在浏览器中进行：
+- 棋盘可视化对弈（基于 `python-chess`）
+- 调用 `sunfish.py` 作为 UCI 引擎进行 AI 落子
+- 预留 DeepSeek 实时讲解接口（输入 API Key 即可启用）
+
+### 快速启动
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+默认地址：`http://localhost:8501`
+
+### DeepSeek 讲解（可选）
+
+可在侧边栏直接输入 `DeepSeek API Key`，或使用环境变量：
+
+```bash
+export DEEPSEEK_API_KEY="your_key"
+export DEEPSEEK_MODEL="deepseek-chat"
+streamlit run app.py
+```
+
+若未配置 Key，系统会返回本地占位讲解文本，不影响对弈流程。
