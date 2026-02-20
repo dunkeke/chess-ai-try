@@ -12,6 +12,10 @@ import streamlit as st
 
 ENGINE_PATH = Path(__file__).parent / "sunfish.py"
 DEFAULT_MODEL = "deepseek-chat"
+PIECE_SYMBOLS = {
+    "P": "♙", "N": "♘", "B": "♗", "R": "♖", "Q": "♕", "K": "♔",
+    "p": "♟", "n": "♞", "b": "♝", "r": "♜", "q": "♛", "k": "♚",
+}
 
 
 @dataclass
@@ -79,11 +83,62 @@ def ensure_session_state() -> None:
         st.session_state.events = ["新对局开始"]
     if "explanations" not in st.session_state:
         st.session_state.explanations = []
+    if "selected_square" not in st.session_state:
+        st.session_state.selected_square = None
 
 
 def render_board(board: chess.Board) -> None:
     svg = chess.svg.board(board=board, size=520)
     st.image(svg)
+
+
+def apply_move(move: chess.Move, board: chess.Board) -> str:
+    if move not in board.legal_moves:
+        raise ValueError("非法走法，请检查输入。")
+    san = board.san(move)
+    board.push(move)
+    return san
+
+
+def render_clickable_board(board: chess.Board) -> Optional[str]:
+    """渲染可点击棋盘（鼠标/触屏）。返回成功走子的 SAN（若有）。"""
+    st.write("点选走棋：先点起点，再点终点（支持鼠标与触屏）。")
+    selected = st.session_state.selected_square
+    if selected is not None:
+        st.caption(f"已选择起点：{chess.square_name(selected)}")
+
+    moved_san: Optional[str] = None
+    for rank in range(7, -1, -1):
+        cols = st.columns(8, gap="small")
+        for file_idx in range(8):
+            square = chess.square(file_idx, rank)
+            piece = board.piece_at(square)
+            symbol = PIECE_SYMBOLS.get(piece.symbol(), "·") if piece else "·"
+            square_name = chess.square_name(square)
+            is_selected = selected == square
+            label = f"[{symbol}]" if is_selected else symbol
+
+            with cols[file_idx]:
+                if st.button(label, key=f"sq_{square_name}", use_container_width=True):
+                    if selected is None:
+                        if piece is None or piece.color != board.turn:
+                            st.warning("请先选择当前行棋方的棋子。")
+                        else:
+                            st.session_state.selected_square = square
+                    else:
+                        candidate = chess.Move(selected, square)
+                        moving_piece = board.piece_at(selected)
+                        if moving_piece and moving_piece.piece_type == chess.PAWN and rank in (0, 7):
+                            candidate = chess.Move(selected, square, promotion=chess.QUEEN)
+                        if candidate in board.legal_moves:
+                            moved_san = apply_move(candidate, board)
+                        else:
+                            st.warning("该目标格不是合法走法，请重新选择。")
+                        st.session_state.selected_square = None
+
+    if st.button("取消当前选择", use_container_width=True):
+        st.session_state.selected_square = None
+    return moved_san
 
 
 def parse_and_push_move(raw_move: str, board: chess.Board) -> str:
@@ -98,9 +153,7 @@ def parse_and_push_move(raw_move: str, board: chess.Board) -> str:
         if move not in board.legal_moves:
             raise ValueError("非法走法，请检查输入。")
 
-    san = board.san(move)
-    board.push(move)
-    return san
+    return apply_move(move, board)
 
 
 def request_engine_move(board: chess.Board, think_time: float) -> str:
@@ -136,6 +189,7 @@ def main() -> None:
             st.session_state.board = chess.Board()
             st.session_state.events = ["新对局开始"]
             st.session_state.explanations = []
+            st.session_state.selected_square = None
             st.rerun()
 
     board: chess.Board = st.session_state.board
@@ -147,6 +201,12 @@ def main() -> None:
 
     with left:
         render_board(board)
+        clicked_san = render_clickable_board(board)
+        if clicked_san:
+            event = f"玩家走子（点选）：{clicked_san}"
+            st.session_state.events.append(event)
+            st.session_state.explanations.append(explainer.explain(board, event))
+            st.rerun()
         st.code(board.fen(), language="text")
 
         user_move = st.text_input("你的走法", placeholder="例如：e4 / Nf3 / e2e4")
