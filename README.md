@@ -126,7 +126,7 @@ In terms of Heritage, Sunfish borrows much more from [Micro-Max by Geert Muller]
 
 已新增 `app.py`，可直接在浏览器中进行：
 - 棋盘可视化对弈（基于 `python-chess`）
-- 支持鼠标/触屏点选走棋（先点起点再点终点）
+- 支持直接在棋盘 UI 上鼠标/触屏点选走棋（起点→终点）
 - 调用 `sunfish.py` 作为 UCI 引擎进行 AI 落子
 - 预留 DeepSeek 实时讲解接口（输入 API Key 即可启用）
 
