@@ -86,15 +86,33 @@ BOARD_SIZE = 520
 
 
 def _query_param_value(key: str) -> Optional[str]:
-    value = st.query_params.get(key)
+    params = _get_query_params()
+    value = params.get(key)
     if isinstance(value, list):
         return value[0] if value else None
     return value
 
 
+def _get_query_params() -> dict:
+    """兼容不同 Streamlit 版本读取查询参数。"""
+    try:
+        return dict(st.query_params)
+    except Exception:
+        return st.experimental_get_query_params()
+
+
 def _clear_query_param(key: str) -> None:
-    if key in st.query_params:
-        del st.query_params[key]
+    params = _get_query_params()
+    if key not in params:
+        return
+
+    params.pop(key, None)
+    try:
+        st.query_params.clear()
+        for param_key, value in params.items():
+            st.query_params[param_key] = value
+    except Exception:
+        st.experimental_set_query_params(**params)
 
 
 def render_interactive_board(board: chess.Board, selected_square: Optional[int] = None) -> Optional[int]:
