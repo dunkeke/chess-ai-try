@@ -9,6 +9,7 @@ import chess.engine
 import chess.svg
 import requests
 import streamlit as st
+from streamlit import components
 
 ENGINE_PATH = Path(__file__).parent / "sunfish.py"
 DEFAULT_MODEL = "deepseek-chat"
