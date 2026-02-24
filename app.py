@@ -176,6 +176,14 @@ def render_interactive_board(board: chess.Board, selected_square: Optional[int] 
         return None
 
 
+def safe_render_interactive_board(board: chess.Board, selected_square: Optional[int]) -> Optional[int]:
+    """兼容不同函数签名的棋盘渲染调用。"""
+    try:
+        return render_interactive_board(board, selected_square=selected_square)
+    except TypeError:
+        return render_interactive_board(board)
+
+
 def apply_move(move: chess.Move, board: chess.Board) -> str:
     if move not in board.legal_moves:
         raise ValueError("非法走法，请检查输入。")
@@ -338,7 +346,7 @@ def main() -> None:
         if st.session_state.selected_square is not None:
             st.caption(f"已选择起点：{chess.square_name(st.session_state.selected_square)}")
 
-        clicked_square = render_interactive_board(board, st.session_state.selected_square)
+        clicked_square = safe_render_interactive_board(board, st.session_state.selected_square)
         clicked_san = None
         if clicked_square is not None:
             clicked_san = handle_square_click(board, st.session_state.selected_square, clicked_square)
