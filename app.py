@@ -115,9 +115,23 @@ def _clear_query_param(key: str) -> None:
         st.experimental_set_query_params(**params)
 
 
-def render_interactive_board(board: chess.Board, selected_square: Optional[int] = None) -> Optional[int]:
+def _build_board_svg(board: chess.Board, selected_square: Optional[int]) -> str:
     fill = {selected_square: "#f7ec6e"} if selected_square is not None else {}
-    svg = chess.svg.board(board=board, size=BOARD_SIZE, coordinates=False, fill=fill)
+    try:
+        return chess.svg.board(board=board, size=BOARD_SIZE, coordinates=False, fill=fill)
+    except TypeError:
+        return chess.svg.board(board=board, size=BOARD_SIZE, coordinates=False)
+
+
+def _render_board_html(board_html: str) -> None:
+    try:
+        components.v1.html(board_html, height=BOARD_SIZE + 8, width=BOARD_SIZE + 8, scrolling=False)
+    except TypeError:
+        components.v1.html(board_html, height=BOARD_SIZE + 8, width=BOARD_SIZE + 8)
+
+
+def render_interactive_board(board: chess.Board, selected_square: Optional[int] = None) -> Optional[int]:
+    svg = _build_board_svg(board, selected_square)
     square_size = BOARD_SIZE / 8
     overlay = []
     for rank in range(7, -1, -1):
@@ -149,7 +163,7 @@ def render_interactive_board(board: chess.Board, selected_square: Optional[int] 
       </body>
     </html>
     """
-    components.v1.html(board_html, height=BOARD_SIZE + 8, width=BOARD_SIZE + 8, scrolling=False)
+    _render_board_html(board_html)
 
     clicked = _query_param_value("clicked")
     if not clicked:
