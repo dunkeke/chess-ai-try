@@ -13,8 +13,6 @@ from streamlit import components
 
 ENGINE_PATH = Path(__file__).parent / "sunfish.py"
 DEFAULT_MODEL = "deepseek-chat"
-
-
 @dataclass
 class DeepSeekConfig:
     api_key: str
@@ -84,12 +82,100 @@ def ensure_session_state() -> None:
         st.session_state.selected_square = None
 
 
+BOARD_SIZE = 520
+
+
+def _query_param_value(key: str) -> Optional[str]:
+    value = st.query_params.get(key)
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _clear_query_param(key: str) -> None:
+    if key in st.query_params:
+        del st.query_params[key]
+
+
+def render_interactive_board(board: chess.Board, selected_square: Optional[int] = None) -> Optional[int]:
+    fill = {selected_square: "#f7ec6e"} if selected_square is not None else {}
+    svg = chess.svg.board(board=board, size=BOARD_SIZE, coordinates=False, fill=fill)
+    square_size = BOARD_SIZE / 8
+    overlay = []
+    for rank in range(7, -1, -1):
+        y = (7 - rank) * square_size
+        for file_idx in range(8):
+            x = file_idx * square_size
+            square = chess.square(file_idx, rank)
+            square_name = chess.square_name(square)
+            overlay.append(
+                (
+                    f'<a href="?clicked={square_name}" target="_self">'
+                    f'<rect x="{x}" y="{y}" width="{square_size}" height="{square_size}" '
+                    'fill="#ffffff" fill-opacity="0" style="cursor:pointer;"/></a>'
+                )
+            )
+
+    svg = svg.replace("</svg>", "".join(overlay) + "</svg>")
+    board_html = f"""
+    <html>
+      <head>
+        <style>
+          html, body {{ margin: 0; padding: 0; background: transparent; overflow: hidden; }}
+          .board-wrap {{ width: {BOARD_SIZE}px; height: {BOARD_SIZE}px; }}
+          svg {{ display: block; width: {BOARD_SIZE}px; height: {BOARD_SIZE}px; }}
+        </style>
+      </head>
+      <body>
+        <div class="board-wrap">{svg}</div>
+      </body>
+    </html>
+    """
+    components.v1.html(board_html, height=BOARD_SIZE + 8, width=BOARD_SIZE + 8, scrolling=False)
+
+    clicked = _query_param_value("clicked")
+    if not clicked:
+        return None
+
+    _clear_query_param("clicked")
+    try:
+        return chess.parse_square(clicked)
+    except ValueError:
+        return None
+
+
 def apply_move(move: chess.Move, board: chess.Board) -> str:
     if move not in board.legal_moves:
         raise ValueError("非法走法，请检查输入。")
     san = board.san(move)
     board.push(move)
     return san
+
+
+def handle_square_click(board: chess.Board, selected: Optional[int], clicked_square: int) -> Optional[str]:
+    if selected is None:
+        piece = board.piece_at(clicked_square)
+        if piece is None or piece.color != board.turn:
+            st.warning("请先选择当前行棋方的棋子。")
+            return None
+        st.session_state.selected_square = clicked_square
+        return None
+
+    moving_piece = board.piece_at(selected)
+    if moving_piece is None:
+        st.session_state.selected_square = None
+        st.warning("起点棋子状态已变化，请重新选择。")
+        return None
+
+    candidate = chess.Move(selected, clicked_square)
+    if moving_piece.piece_type == chess.PAWN and chess.square_rank(clicked_square) in (0, 7):
+        candidate = chess.Move(selected, clicked_square, promotion=chess.QUEEN)
+
+    st.session_state.selected_square = None
+    if candidate not in board.legal_moves:
+        st.warning("该目标格不是合法走法，请重新选择。")
+        return None
+    return apply_move(candidate, board)
 
 
 def parse_and_push_move(raw_move: str, board: chess.Board) -> str:
@@ -216,15 +302,25 @@ def main() -> None:
     left, right = st.columns([1.1, 1])
 
     with left:
-        clicked_san, click_message = handle_board_square_click(board)
-        if click_message:
-            st.info(click_message)
+        st.write("点选彩色棋盘：先点起点，再点终点（支持鼠标与触屏）。")
+        if st.session_state.selected_square is not None:
+            st.caption(f"已选择起点：{chess.square_name(st.session_state.selected_square)}")
+
+        clicked_square = render_interactive_board(board, st.session_state.selected_square)
+        clicked_san = None
+        if clicked_square is not None:
+            clicked_san = handle_square_click(board, st.session_state.selected_square, clicked_square)
+
         if clicked_san:
             event = f"玩家走子（棋盘点选）：{clicked_san}"
             st.session_state.events.append(event)
             st.session_state.explanations.append(explainer.explain(board, event))
+            st.rerun()
 
-        render_interactive_board(board)
+        if st.button("取消当前选择", use_container_width=True):
+            st.session_state.selected_square = None
+            st.rerun()
+
         st.code(board.fen(), language="text")
 
         user_move = st.text_input("你的走法（备选）", placeholder="例如：e4 / Nf3 / e2e4")
