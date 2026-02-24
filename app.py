@@ -2,7 +2,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import chess
 import chess.engine
@@ -210,6 +210,70 @@ def request_engine_move(board: chess.Board, think_time: float) -> str:
     return san
 
 
+def _clear_square_query_param() -> None:
+    if "sq" in st.query_params:
+        del st.query_params["sq"]
+
+
+def handle_board_square_click(board: chess.Board) -> Tuple[Optional[str], Optional[str]]:
+    """处理直接点击棋盘格事件，返回 (moved_san, message)。"""
+    square_name = st.query_params.get("sq")
+    if not square_name:
+        return None, None
+
+    try:
+        square = chess.parse_square(square_name)
+    except ValueError:
+        _clear_square_query_param()
+        return None, "无效棋盘坐标，已忽略该点击。"
+
+    _clear_square_query_param()
+
+    selected = st.session_state.selected_square
+    if selected is None:
+        piece = board.piece_at(square)
+        if piece is None or piece.color != board.turn:
+            return None, "请先点击当前行棋方的棋子作为起点。"
+        st.session_state.selected_square = square
+        return None, f"已选择起点：{chess.square_name(square)}"
+
+    if square == selected:
+        st.session_state.selected_square = None
+        return None, "已取消当前起点选择。"
+
+    move = chess.Move(selected, square)
+    selected_piece = board.piece_at(selected)
+    if selected_piece and selected_piece.piece_type == chess.PAWN and chess.square_rank(square) in (0, 7):
+        move = chess.Move(selected, square, promotion=chess.QUEEN)
+
+    st.session_state.selected_square = None
+    if move not in board.legal_moves:
+        return None, "该目标格不是合法走法，请重新点击起点和终点。"
+    return apply_move(move, board), None
+
+
+def render_interactive_board(board: chess.Board) -> None:
+    links = {
+        square: f"?sq={chess.square_name(square)}"
+        for square in chess.SQUARES
+    }
+    selected = st.session_state.selected_square
+    fill = {selected: "#f6f669"} if selected is not None else {}
+    svg = chess.svg.board(board=board, size=560, fill=fill, links=links)
+
+    st.markdown(
+        """
+        <style>
+        .board-tip { margin: 0 0 0.4rem 0; color: #666; }
+        .board-wrapper svg { max-width: 100%; height: auto; border-radius: 8px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="board-tip">直接点击棋盘走子：起点 → 终点（支持鼠标/触屏）</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="board-wrapper">{svg}</div>', unsafe_allow_html=True)
+
+
 def main() -> None:
     st.set_page_config(page_title="Sunfish Streamlit Chess", layout="wide")
     ensure_session_state()
@@ -227,6 +291,7 @@ def main() -> None:
             st.session_state.events = ["新对局开始"]
             st.session_state.explanations = []
             st.session_state.selected_square = None
+            _clear_square_query_param()
             st.rerun()
 
     board: chess.Board = st.session_state.board
@@ -247,7 +312,7 @@ def main() -> None:
             clicked_san = handle_square_click(board, st.session_state.selected_square, clicked_square)
 
         if clicked_san:
-            event = f"玩家走子（点选）：{clicked_san}"
+            event = f"玩家走子（棋盘点选）：{clicked_san}"
             st.session_state.events.append(event)
             st.session_state.explanations.append(explainer.explain(board, event))
             st.rerun()
@@ -258,11 +323,11 @@ def main() -> None:
 
         st.code(board.fen(), language="text")
 
-        user_move = st.text_input("你的走法", placeholder="例如：e4 / Nf3 / e2e4")
+        user_move = st.text_input("你的走法（备选）", placeholder="例如：e4 / Nf3 / e2e4")
         if st.button("提交走法", use_container_width=True):
             try:
                 san = parse_and_push_move(user_move, board)
-                event = f"玩家走子：{san}"
+                event = f"玩家走子（文本）：{san}"
                 st.session_state.events.append(event)
                 st.session_state.explanations.append(explainer.explain(board, event))
                 st.rerun()
